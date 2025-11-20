@@ -214,12 +214,3 @@ python scripts/llm_fair_ols.py \
 # **License**
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
-
-Under this license:
-
-• Anyone can use, study, modify, and share the project
-• Any redistributed version must remain open-source
-• Any modified version must also be open-sourced under GPL-3.0
-• Commercial use is allowed, but only if derivatives stay open-source
-
-The LICENSE file contains the full text of GPL-3.0.
