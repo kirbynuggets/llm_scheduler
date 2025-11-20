@@ -1,4 +1,4 @@
-Takeaway:
+Takeaway: (for personal reference)
 
 Phi-3 → fast, cheap, slightly less accurate
 
