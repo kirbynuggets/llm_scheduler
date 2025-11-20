@@ -1,0 +1,2 @@
+timestamp,prompt,best_model,best_score,est_runtime,est_energy,accuracy,weights_accuracy,weights_energy,weights_time
+2025-11-12 23:20:22,Explain quantum tunneling in simple terms,falcon-7b-instruct,0.059,0.8039,0.6922,0.705,0.2,0.1,0.7

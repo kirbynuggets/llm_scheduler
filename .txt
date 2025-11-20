@@ -1,0 +1,7 @@
+Takeaway:
+
+Phi-3 → fast, cheap, slightly less accurate
+
+Mistral → strong accuracy, moderate cost
+
+Falcon → balanced but energy-hungry

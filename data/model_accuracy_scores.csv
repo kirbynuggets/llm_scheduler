@@ -1,0 +1,4 @@
+model,accuracy
+microsoft/Phi-3-mini-4k-instruct,0.685
+mistralai/Mistral-7B-Instruct-v0.1,0.723
+tiiuae/Falcon-7B-Instruct,0.705
