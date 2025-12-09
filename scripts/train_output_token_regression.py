@@ -1,60 +1,76 @@
 import pandas as pd
 import json
-from sklearn.linear_model import LinearRegression
 from pathlib import Path
+from sklearn.linear_model import LinearRegression
+import glob
 
-# =====================================
-# Load profiling data from all models
-# =====================================
 
-csv_paths = [
-    "metrics_falcon-7b-instruct.csv",
-    "metrics_mistral-7B-instruct-v0.2.csv",
-    "metrics_phi-3-mini-4k-instruct.csv"
-]
+def main():
+    # ----------------------------------------------------
+    # 1. Find all metrics CSVs
+    # ----------------------------------------------------
+    # Adjust the pattern if your CSVs live in another folder
+    csv_paths = list(Path("models").glob("metrics_*.csv"))
 
-df_list = []
-for p in csv_paths:
-    df = pd.read_csv(p)
+    if not csv_paths:
+        raise FileNotFoundError(
+            "No metrics_*.csv files found in the project root. "
+            "Make sure your profiling files are named like 'metrics_falcon-7b-instruct.csv'."
+        )
 
-    # ensure required columns exist
-    if {"input_tokens", "output_tokens"} <= set(df.columns):
-        df_list.append(df)
-    else:
-        print(f"⚠️ Skipping {p}: missing required columns")
+    all_rows = []
 
-data = pd.concat(df_list, axis=0)
-print(f"Loaded {len(data)} rows for regression training.")
+    for path in csv_paths:
+        df = pd.read_csv(path)
 
-# =====================================
-# Prepare data for regression
-# =====================================
+        # We only need these two columns
+        if not {"input_tokens", "output_tokens"}.issubset(df.columns):
+            raise ValueError(
+                f"{path} is missing 'input_tokens' or 'output_tokens' columns. "
+                f"Found columns: {list(df.columns)}"
+            )
 
-X = data["input_tokens"].values.reshape(-1, 1)
-y = data["output_tokens"].values.reshape(-1, 1)
+        # Drop rows with NaNs just to be safe
+        sub = df[["input_tokens", "output_tokens"]].dropna()
+        all_rows.append(sub)
 
-# =====================================
-# Train Simple Linear Regression
-# =====================================
+    data = pd.concat(all_rows, ignore_index=True)
 
-model = LinearRegression()
-model.fit(X, y)
+    if data.empty:
+        raise ValueError("No valid rows found across metrics_*.csv files.")
 
-alpha = float(model.coef_[0][0])
-beta = float(model.intercept_[0])
+    print(f"Loaded {len(data)} samples from {len(csv_paths)} metrics files.")
 
-print("\n📌 Trained Regression Model:")
-print(f"α (slope)     = {alpha}")
-print(f"β (intercept) = {beta}")
+    # ----------------------------------------------------
+    # 2. Prepare X, y for regression
+    # ----------------------------------------------------
+    X = data["input_tokens"].values.reshape(-1, 1)
+    y = data["output_tokens"].values.reshape(-1, 1)
 
-# =====================================
-# Save parameters
-# =====================================
+    # ----------------------------------------------------
+    # 3. Fit linear regression
+    # ----------------------------------------------------
+    model = LinearRegression()
+    model.fit(X, y)
 
-out = {"alpha": alpha, "beta": beta}
-Path("data").mkdir(exist_ok=True)
+    alpha = float(model.coef_[0][0])      # slope
+    beta = float(model.intercept_[0])     # intercept
 
-with open("data/output_token_regression.json", "w") as f:
-    json.dump(out, f, indent=2)
+    print("\nTrained output-token regression:")
+    print(f"alpha (slope)     = {alpha:.6f}")
+    print(f"beta  (intercept) = {beta:.6f}")
 
-print("\n✅ Saved -> data/output_token_regression.json")
+    # ----------------------------------------------------
+    # 4. Save to JSON
+    # ----------------------------------------------------
+    Path("data").mkdir(exist_ok=True)
+
+    out_path = Path("data/output_token_regression.json")
+    with out_path.open("w") as f:
+        json.dump({"alpha": alpha, "beta": beta}, f, indent=2)
+
+    print(f"\nSaved regression parameters to {out_path.resolve()}")
+
+
+if __name__ == "__main__":
+    main()
