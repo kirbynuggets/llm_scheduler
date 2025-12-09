@@ -8,3 +8,4 @@ statsmodels
 pyJoules
 tqdm
 matplotlib
+scikit-learn
