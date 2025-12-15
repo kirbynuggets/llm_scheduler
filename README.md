@@ -1,152 +1,136 @@
-# **Dynamic LLM Inference Scheduler**
+# Energy, Time, and Correctness-Aware LLM Scheduler
 
-*A data-driven system that automatically selects the best Large Language Model for a given prompt using hybrid normalization, regression-based cost prediction, and multi-objective scoring.*
+A regression-driven, performance-aware system for dynamically routing LLM queries across heterogeneous models.
 
-This project builds an adaptive model-selection engine that chooses between multiple LLMs (Phi-3, Falcon-7B, Mistral-7B) based on predicted runtime, energy usage, and output quality.
-Instead of routing every user prompt to a single large model, the system predicts cost–accuracy trade-offs and selects the optimal model automatically.
+## Overview
 
-The goal is to make LLM inference cheaper, faster, and more intelligent—especially in multi-model deployment environments.
+Large Language Models (LLMs) vary drastically in accuracy, latency, and energy consumption.
+Yet most real-world deployments still use a single large model for every query, leading to unnecessary cost, latency, and power waste.
 
----
+This project implements an online, performance-aware LLM scheduler that dynamically selects the best model for each prompt by explicitly trading off:
 
-# **Project Overview**
+- **Correctness** (accuracy)
+- **Inference latency**
+- **Energy consumption**
 
-Modern LLM applications often rely on a single large model for all queries.
-This creates unnecessary latency, cost and energy waste.
+Rather than guessing or load-balancing blindly, the scheduler predicts runtime and energy before execution using regression models trained from real GPU profiling data, then selects the optimal model using a weighted cost function.
 
-This project provides a full, end-to-end **Dynamic LLM Scheduler** that:
+This work was developed as part of a B.Tech dissertation and builds on workload-based energy modeling methodologies from recent systems research.
 
-1. Profiles each model’s behavior
-2. Learns runtime and energy patterns using OLS regression
-3. Normalizes cost and accuracy metrics through a multi-stage hybrid pipeline
-4. Scores every model using user-defined priorities
-5. Selects the best model with a deterministic, reproducible algorithm
+## Why This Matters
 
-Everything here is built from scratch and modular, so new models can be plugged in with zero friction.
+> Using a large model for every query is like using a cargo ship to deliver pizza.
 
----
+- Simple prompts don't need massive models
+- Complex reasoning deserves better accuracy
+- Mobile, edge, and sustainable deployments demand efficiency
 
-# **Key Innovations**
+This scheduler enables intelligent, user-controlled routing across multiple LLMs—without sacrificing predictability or transparency.
 
-### **1. Multi-Metric Profiling Layer**
+## Key Contributions
 
-Each LLM is benchmarked for:
+- Real-time LLM scheduling using regression-based cost prediction
+- Joint optimization of accuracy, energy, and latency
+- Explicit modeling of attention complexity via token interaction terms
+- User-driven trade-offs using weighted objectives
+- Reproducible and deterministic routing decisions
 
-• Input & output token counts
-• Runtime
-• Measured/estimated energy usage
+## System Architecture
 
-This creates a reproducible numeric profile per model.
+The system is divided into two clean phases:
 
----
+### 1. Offline Profiling & Modeling
 
-### **2. Hybrid Normalization Pipeline**
+A one-time process that characterizes model behavior.
 
-Because model metrics differ dramatically in scale, the system applies a 5-stage normalization method:
+- Run each model on thousands of prompts
+- Measure:
+  - Runtime (seconds)
+  - Energy consumption (Joules)
+  - Input & output token counts
+- Train OLS regression models to predict cost
 
-1. Z-score
-2. Log transformation
-3. Min-max scaling
-4. Softmax amplification
-5. Variance rebasing
+### 2. Online Scheduling
 
-This ensures stable comparisons across different LLMs and hardware environments.
+A lightweight, real-time decision engine.
 
----
+- Estimate token counts for incoming prompt
+- Predict runtime & energy for each model
+- Combine predictions with accuracy scores
+- Select the model with the lowest weighted cost
 
-### **3. Regression-Based Runtime & Energy Prediction**
+Scheduler overhead is under 1 ms, making it safe for real-time systems.
 
-The system trains Ordinary Least Squares (OLS) models of the form:
+## Models Evaluated
 
+| Model | Parameters | Strength |
+|-------|-----------|----------|
+| Phi-3 Mini | 3.8B | Energy & latency efficiency |
+| Mistral-7B | 7B | High accuracy per watt |
+| Falcon-7B | 7B | Legacy dense architecture (baseline) |
+
+## Mathematical Modeling
+
+### Regression-Based Cost Prediction
+
+Each model learns two linear predictors:
+
+**Runtime**
 ```
-runtime = α0 + α1 * input_tokens + α2 * output_tokens  
-energy  = β0 + β1 * input_tokens + β2 * output_tokens
-```
-
-This allows the scheduler to *predict cost before running the model*.
-
----
-
-### **4. Weighted Multi-Objective Scoring**
-
-Users control the trade-off:
-
-```
---weight_accuracy
---weight_energy
---weight_time
-```
-
-This means the scheduler adapts to:
-
-• High-accuracy tasks
-• Low-energy deployments
-• Latency-sensitive environments
-• Balanced inference pipelines
-
-The final score is:
-
-```
-score =
-  w_acc * accuracy_score +
-  w_energy * energy_score +
-  w_time * runtime_score
+T = β₀ + β₁·τ_in + β₂·τ_out + β₃·(τ_in × τ_out)
 ```
 
-Lower score = better model.
+**Energy**
+```
+E = α₀ + α₁·τ_in + α₂·τ_out + α₃·(τ_in × τ_out)
+```
 
----
+The interaction term captures the quadratic scaling of attention in Transformers.
 
-### **5. Visualization & Diagnostics**
+### Output Token Estimation
 
-The project includes scripts to visualize:
+Since output length is unknown before execution, it is estimated as:
+```
+τ_out ≈ 1.028 · τ_in + 44.12
+```
 
-• Trade-offs between accuracy, energy, runtime
-• Score changes across multiple runs
-• Model dominance regions
+This heuristic is derived empirically and is sufficient for relative ranking.
 
-These visuals are helpful for debugging and for explaining model routes in interviews.
+### Fair-OLS Scheduling Algorithm
 
----
+Because accuracy, energy, and time exist on wildly different scales, the scheduler first normalizes all predicted costs:
+```
+x_norm = (x − min(x)) / (max(x) − min(x) + ε)
+```
 
-# **System Architecture**
+Accuracy is inverted to form a minimization objective:
+```
+Accuracy Cost = 1 − Accuracy
+```
 
-### **1. Profiling**
+**Final Score**
+```
+Score =
+  w_acc   · AccuracyCost +
+  w_energy· EnergyNorm +
+  w_time  · TimeNorm
+```
 
-Benchmark each LLM on controlled inputs to build a profile dataset.
+The model with the lowest score is selected.
 
-### **2. Normalization**
+## What Makes This Different
 
-Apply the hybrid pipeline to convert raw numbers into comparable metrics.
+❌ No black-box heuristics  
+❌ No hard-coded thresholds  
+❌ No static routing rules
 
-### **3. Regression**
+Every decision is:
+- ✅ Predictive
+- ✅ Explainable
+- ✅ Reproducible
+- ✅ Tunable by the user
 
-Fit OLS models to estimate per-token cost.
-
-### **4. Scheduler**
-
-Combine predictions + accuracy scores + user weights to pick the optimal model.
-
----
-
-# **Tech Stack**
-
-### **Languages**
-
-Python 3.10+
-
-### **Libraries**
-
-NumPy, Pandas, Statsmodels, PyTorch, Transformers, Matplotlib
-
-### **System Requirements**
-
-Linux recommended (deterministic inference), virtualenv for isolation.
-
----
-
-# **Project Structure**
-
+## Project Structure
 ```
 .
 ├── data/
@@ -161,36 +145,31 @@ Linux recommended (deterministic inference), virtualenv for isolation.
 │   ├── llm_scheduler_hybrid.py
 │   └── hybrid_normalize.py
 ├── plots/
+├── requirements.txt
 └── README.md
 ```
 
----
+## Quick Start
 
-# **Quick Start**
-
-### Install
-
-```
+### Environment Setup
+```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Generate profiling data
-
-```
+### Step 1: Profile Models
+```bash
 python scripts/build_model_profile.py
 ```
 
-### Train OLS regression
-
-```
+### Step 2: Train Regression Models
+```bash
 python scripts/run_regression_ols_hybrid.py
 ```
 
-### Run scheduler
-
-```
+### Step 3: Run the Scheduler
+```bash
 python scripts/llm_fair_ols.py \
   --prompt "Explain reinforcement learning" \
   --weight_accuracy 0.7 \
@@ -198,19 +177,50 @@ python scripts/llm_fair_ols.py \
   --weight_time 0.1
 ```
 
----
+## Example Scheduling Behavior
 
-# **Future Enhancements**
+- **Energy-priority user** → Phi-3 Mini
+- **Accuracy-priority user** → Mistral-7B
+- **Latency-priority user** → Phi-3 Mini
+- **Balanced user** → Dynamic selection based on prompt
 
-• Add quantized models (INT4, GGUF)
-• Real hardware power-draw logging
-• Reinforcement-learning-based scheduler
-• GPU-aware routing
-• Prompt-type classification & custom routing rules
-• REST API server for production use
+Falcon-7B is often excluded due to Pareto inefficiency—higher energy with lower accuracy than Mistral.
 
----
+## Visualization & Analysis
 
-# **License**
+The project includes scripts to generate:
+
+- Accuracy vs Energy trade-off plots
+- Scheduler sensitivity curves
+- Model dominance regions
+- Console-level routing diagnostics
+
+These are especially useful for:
+- Debugging
+- Research validation
+- Interview explanations
+
+## Limitations
+
+- Output token estimation is heuristic
+- Energy measurement relies on NVML polling
+- Accuracy scores are static (leaderboard-based)
+
+All of these are explicit design trade-offs, not hidden assumptions.
+
+## Future Enhancements
+
+- Quantized & GGUF models
+- Reinforcement-learning-based scheduler
+- GPU-aware and multi-node routing
+- Prompt-type classification
+- REST API for production deployment
+- Real hardware power meters
+
+## License
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+
+---
+
+**Built with rigor. Optimized for reality.**
