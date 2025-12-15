@@ -217,6 +217,10 @@ All of these are explicit design trade-offs, not hidden assumptions.
 - REST API for production deployment
 - Real hardware power meters
 
+## Acknowledgments
+
+This project was completed as part of a B.Tech dissertation at Indian Institute of Information Technology Guwahati under the guidance of Dr. Nilotpal Chakraborty. Special thanks to Dr. Mayank Jha (HP Labs) for early conceptual discussions. The work builds upon methodologies from recent systems research in energy-aware computing and sustainable AI deployment.
+
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
